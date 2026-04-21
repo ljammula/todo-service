@@ -1,0 +1,233 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"todo-service/internal/todo"
+)
+
+type app struct {
+	service *todo.Service
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+func main() {
+	store := todo.NewStore()
+	service := todo.NewService(store)
+	app := &app{service: service}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/todos", app.handleTodos)
+	mux.HandleFunc("/todos/", app.handleTodoByID)
+	mux.Handle("/mcp", app.newMCPHandler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	port := envOrDefault("PORT", "8080")
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           loggingMiddleware(mux),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("shutdown error: %v", err)
+		}
+	}()
+
+	log.Printf("todo-service listening on http://localhost:%s", port)
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
+}
+
+func (a *app) handleTodos(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, a.service.List())
+	case http.MethodPost:
+		var input todo.CreateInput
+		if err := decodeJSON(r, &input); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		item, err := a.service.Create(input)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, item)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *app) handleTodoByID(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.URL.Path, "/todos/")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var input todo.UpdateInput
+		if err := decodeJSON(r, &input); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		item, err := a.service.Update(id, input)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	case http.MethodDelete:
+		if err := a.service.Delete(id); err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *app) newMCPHandler() http.Handler {
+	server := mcp.NewServer(&mcp.Implementation{Name: "todo-service", Version: "0.1.0"}, nil)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "todo.create",
+		Description: "Create a todo item",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
+		Title string `json:"title" jsonschema:"required,description=Todo title"`
+	}) (*mcp.CallToolResult, struct{}, error) {
+		item, err := a.service.Create(todo.CreateInput{Title: args.Title})
+		if err != nil {
+			return nil, struct{}{}, err
+		}
+		return jsonToolResult(item)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "todo.list",
+		Description: "List all todo items",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, struct{}, error) {
+		return jsonToolResult(a.service.List())
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "todo.update",
+		Description: "Update a todo item",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
+		ID        int64   `json:"id" jsonschema:"required,description=Todo ID"`
+		Title     *string `json:"title,omitempty" jsonschema:"description=Updated title"`
+		Completed *bool   `json:"completed,omitempty" jsonschema:"description=Completion status"`
+	}) (*mcp.CallToolResult, struct{}, error) {
+		item, err := a.service.Update(args.ID, todo.UpdateInput{Title: args.Title, Completed: args.Completed})
+		if err != nil {
+			return nil, struct{}{}, err
+		}
+		return jsonToolResult(item)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "todo.delete",
+		Description: "Delete a todo item",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
+		ID int64 `json:"id" jsonschema:"required,description=Todo ID"`
+	}) (*mcp.CallToolResult, struct{}, error) {
+		if err := a.service.Delete(args.ID); err != nil {
+			return nil, struct{}{}, err
+		}
+		return jsonToolResult(map[string]any{"deleted": true, "id": args.ID})
+	})
+
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
+}
+
+func jsonToolResult(v any) (*mcp.CallToolResult, struct{}, error) {
+	payload, err := json.Marshal(v)
+	if err != nil {
+		return nil, struct{}{}, err
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(payload)}}}, struct{}{}, nil
+}
+
+func decodeJSON(r *http.Request, dst any) error {
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return fmt.Errorf("invalid JSON body: %w", err)
+	}
+	return nil
+}
+
+func parseID(path, prefix string) (int64, error) {
+	idText := strings.TrimPrefix(path, prefix)
+	if idText == "" || strings.Contains(idText, "/") {
+		return 0, fmt.Errorf("invalid todo id")
+	}
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil || id < 1 {
+		return 0, fmt.Errorf("invalid todo id")
+	}
+	return id, nil
+}
+
+func writeServiceError(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if errors.Is(err, todo.ErrNotFound) {
+		status = http.StatusNotFound
+	}
+	writeJSON(w, status, errorResponse{Error: err.Error()})
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("encode response error: %v", err)
+	}
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+	})
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
