@@ -64,29 +64,46 @@ Example MCP tool names:
 - `todo_update`
 - `todo_delete`
 
-### MCP Session Manager
+### CLI Tool: todo-cli
 
-Use the MCP session manager to interact with MCP tools without manually managing sessions:
+The `todo-cli` tool provides a convenient command-line interface to interact with MCP tools.
+
+**Build the CLI:**
+
+```bash
+go build -o todo-cli ./cmd/todo-cli
+```
+
+**Usage:**
 
 ```bash
 # List all todos
-python3 internal/mcp_session_manager.py list
+./todo-cli list
 
 # Create a todo
-python3 internal/mcp_session_manager.py create "Buy milk"
+./todo-cli create "Buy milk"
 
 # Update a todo
-python3 internal/mcp_session_manager.py update 1 title="Buy oat milk" completed=true
+./todo-cli update 1 title="Buy oat milk" completed=true
 
 # Delete a todo
-python3 internal/mcp_session_manager.py delete 1
+./todo-cli delete 1
 ```
 
-The session manager:
+**Features:**
 - Automatically initializes and manages MCP sessions
 - Persists session IDs to disk to avoid re-initialization
-- Provides a clean Python API and CLI interface
 - Handles the MCP protocol complexities transparently
+- Pure Go implementation, consistent with the service
+
+**Configuration:**
+
+Set `TODO_SERVICE_URL` environment variable to connect to a different service instance:
+
+```bash
+export TODO_SERVICE_URL=http://example.com:8080
+./todo-cli list
+```
 
 ## Using with GitHub Copilot CLI
 
