@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -125,7 +127,7 @@ func (a *app) newMCPHandler() http.Handler {
 		Name:        "todo.create",
 		Description: "Create a todo item",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
-		Title string `json:"title" jsonschema:"required,description=Todo title"`
+		Title string `json:"title"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		item, err := a.service.Create(todo.CreateInput{Title: args.Title})
 		if err != nil {
@@ -145,9 +147,9 @@ func (a *app) newMCPHandler() http.Handler {
 		Name:        "todo.update",
 		Description: "Update a todo item",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
-		ID        int64   `json:"id" jsonschema:"required,description=Todo ID"`
-		Title     *string `json:"title,omitempty" jsonschema:"description=Updated title"`
-		Completed *bool   `json:"completed,omitempty" jsonschema:"description=Completion status"`
+		ID        int64   `json:"id"`
+		Title     *string `json:"title,omitempty"`
+		Completed *bool   `json:"completed,omitempty"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		item, err := a.service.Update(args.ID, todo.UpdateInput{Title: args.Title, Completed: args.Completed})
 		if err != nil {
@@ -160,7 +162,7 @@ func (a *app) newMCPHandler() http.Handler {
 		Name:        "todo.delete",
 		Description: "Delete a todo item",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
-		ID int64 `json:"id" jsonschema:"required,description=Todo ID"`
+		ID int64 `json:"id"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		if err := a.service.Delete(args.ID); err != nil {
 			return nil, struct{}{}, err
@@ -168,7 +170,9 @@ func (a *app) newMCPHandler() http.Handler {
 		return jsonToolResult(map[string]any{"deleted": true, "id": args.ID})
 	})
 
-	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+		JSONResponse: true,
+	})
 }
 
 func jsonToolResult(v any) (*mcp.CallToolResult, struct{}, error) {
@@ -217,11 +221,44 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+type responseRecorder struct {
+	http.ResponseWriter
+	status       int
+	bytesWritten int
+}
+
+func (rr *responseRecorder) WriteHeader(status int) {
+	rr.status = status
+	rr.ResponseWriter.WriteHeader(status)
+}
+
+func (rr *responseRecorder) Write(b []byte) (int, error) {
+	n, err := rr.ResponseWriter.Write(b)
+	rr.bytesWritten += n
+	return n, err
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+
+		var reqBody []byte
+		if r.Body != nil && r.ContentLength > 0 {
+			reqBody, _ = io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(reqBody))
+		}
+
+		rr := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rr, r)
+
+		log.Printf("%s %s %d %dB in=%dB %s",
+			r.Method,
+			r.URL.RequestURI(),
+			rr.status,
+			rr.bytesWritten,
+			len(reqBody),
+			time.Since(start),
+		)
 	})
 }
 
