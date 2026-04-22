@@ -176,32 +176,32 @@ mcp_notify_initialized "$SID"
 
 # tools/list
 resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
-assert_contains "MCP tools/list contains todo.create" "todo.create" "$resp"
-assert_contains "MCP tools/list contains todo.list"   "todo.list"   "$resp"
-assert_contains "MCP tools/list contains todo.update" "todo.update" "$resp"
-assert_contains "MCP tools/list contains todo.delete" "todo.delete" "$resp"
+assert_contains "MCP tools/list contains todo_create" "todo_create" "$resp"
+assert_contains "MCP tools/list contains todo_list"   "todo_list"   "$resp"
+assert_contains "MCP tools/list contains todo_update" "todo_update" "$resp"
+assert_contains "MCP tools/list contains todo_delete" "todo_delete" "$resp"
 
-# todo.create
-resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo.create","arguments":{"title":"MCP task"}}}')
+# todo_create
+resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo_create","arguments":{"title":"MCP task"}}}')
 text=$(mcp_tool_text "$resp")
-assert_contains "MCP todo.create returns item" '"title":"MCP task"' "$text"
+assert_contains "MCP todo_create returns item" '"title":"MCP task"' "$text"
 MCP_ID=$(json_field "$text" "['id']")
 
-# todo.list
-resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"todo.list","arguments":{}}}')
-assert_contains "MCP todo.list contains created item" "\"id\":$MCP_ID" "$(mcp_tool_text "$resp")"
+# todo_list
+resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"todo_list","arguments":{}}}')
+assert_contains "MCP todo_list contains created item" "\"id\":$MCP_ID" "$(mcp_tool_text "$resp")"
 
-# todo.update
-resp=$(mcp_call "$SID" "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"todo.update\",\"arguments\":{\"id\":$MCP_ID,\"completed\":true}}}")
-assert_contains "MCP todo.update completed=true" '"completed":true' "$(mcp_tool_text "$resp")"
+# todo_update
+resp=$(mcp_call "$SID" "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"todo_update\",\"arguments\":{\"id\":$MCP_ID,\"completed\":true}}}")
+assert_contains "MCP todo_update completed=true" '"completed":true' "$(mcp_tool_text "$resp")"
 
-# todo.delete
-resp=$(mcp_call "$SID" "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"todo.delete\",\"arguments\":{\"id\":$MCP_ID}}}")
-assert_contains "MCP todo.delete returns deleted:true" '"deleted":true' "$(mcp_tool_text "$resp")"
+# todo_delete
+resp=$(mcp_call "$SID" "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"todo_delete\",\"arguments\":{\"id\":$MCP_ID}}}")
+assert_contains "MCP todo_delete returns deleted:true" '"deleted":true' "$(mcp_tool_text "$resp")"
 
-# todo.create — empty title should be an MCP error
-resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"todo.create","arguments":{"title":"  "}}}')
-assert_eq "MCP todo.create empty title → isError" "True" "$(mcp_is_error "$resp")"
+# todo_create — empty title should be an MCP error
+resp=$(mcp_call "$SID" '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"todo_create","arguments":{"title":"  "}}}')
+assert_eq "MCP todo_create empty title → isError" "True" "$(mcp_is_error "$resp")"
 
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""

@@ -71,7 +71,7 @@ func main() {
 func (a *app) handleTodos(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, a.service.List())
+		writeJSON(w, http.StatusOK, a.service.ListItems())
 	case http.MethodPost:
 		var input todo.CreateInput
 		if err := decodeJSON(r, &input); err != nil {
@@ -124,63 +124,55 @@ func (a *app) newMCPHandler() http.Handler {
 	server := mcp.NewServer(&mcp.Implementation{Name: "todo-service", Version: "0.1.0"}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "todo.create",
+		Name:        "todo_create",
 		Description: "Create a todo item",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
 		Title string `json:"title"`
-	}) (*mcp.CallToolResult, struct{}, error) {
+	}) (*mcp.CallToolResult, todo.Item, error) {
 		item, err := a.service.Create(todo.CreateInput{Title: args.Title})
 		if err != nil {
-			return nil, struct{}{}, err
+			return nil, todo.Item{}, err
 		}
-		return jsonToolResult(item)
+		return nil, item, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "todo.list",
+		Name:        "todo_list",
 		Description: "List all todo items",
-	}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, struct{}, error) {
-		return jsonToolResult(a.service.List())
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, todo.ListResult, error) {
+		return nil, a.service.List(), nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "todo.update",
+		Name:        "todo_update",
 		Description: "Update a todo item",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
 		ID        int64   `json:"id"`
 		Title     *string `json:"title,omitempty"`
 		Completed *bool   `json:"completed,omitempty"`
-	}) (*mcp.CallToolResult, struct{}, error) {
+	}) (*mcp.CallToolResult, todo.Item, error) {
 		item, err := a.service.Update(args.ID, todo.UpdateInput{Title: args.Title, Completed: args.Completed})
 		if err != nil {
-			return nil, struct{}{}, err
+			return nil, todo.Item{}, err
 		}
-		return jsonToolResult(item)
+		return nil, item, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "todo.delete",
+		Name:        "todo_delete",
 		Description: "Delete a todo item",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args struct {
 		ID int64 `json:"id"`
-	}) (*mcp.CallToolResult, struct{}, error) {
+	}) (*mcp.CallToolResult, map[string]any, error) {
 		if err := a.service.Delete(args.ID); err != nil {
-			return nil, struct{}{}, err
+			return nil, nil, err
 		}
-		return jsonToolResult(map[string]any{"deleted": true, "id": args.ID})
+		return nil, map[string]any{"deleted": true, "id": args.ID}, nil
 	})
 
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		JSONResponse: true,
 	})
-}
-
-func jsonToolResult(v any) (*mcp.CallToolResult, struct{}, error) {
-	payload, err := json.Marshal(v)
-	if err != nil {
-		return nil, struct{}{}, err
-	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(payload)}}}, struct{}{}, nil
 }
 
 func decodeJSON(r *http.Request, dst any) error {

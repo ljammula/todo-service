@@ -9,6 +9,10 @@ type Service struct {
 	store *Store
 }
 
+type ListResult struct {
+	Items []Item `json:"items"`
+}
+
 func NewService(store *Store) *Service {
 	return &Service{store: store}
 }
@@ -21,8 +25,12 @@ func (s *Service) Create(input CreateInput) (Item, error) {
 	return s.store.Create(input), nil
 }
 
-func (s *Service) List() []Item {
+func (s *Service) ListItems() []Item {
 	return s.store.List()
+}
+
+func (s *Service) List() ListResult {
+	return ListResult{Items: s.store.List()}
 }
 
 func (s *Service) Update(id int64, input UpdateInput) (Item, error) {

@@ -111,7 +111,7 @@ curl -s -X POST http://localhost:8080/mcp \
   "result": {
     "tools": [
       {
-        "name": "todo.create",
+        "name": "todo_create",
         "description": "Create a todo item",
         "inputSchema": {
           "type": "object",
@@ -124,13 +124,13 @@ curl -s -X POST http://localhost:8080/mcp \
         "outputSchema": { "type": "object" }
       },
       {
-        "name": "todo.list",
+        "name": "todo_list",
         "description": "List all todo items",
         "inputSchema": { "type": "object" },
         "outputSchema": { "type": "object" }
       },
       {
-        "name": "todo.update",
+        "name": "todo_update",
         "description": "Update a todo item",
         "inputSchema": {
           "type": "object",
@@ -143,7 +143,7 @@ curl -s -X POST http://localhost:8080/mcp \
         }
       },
       {
-        "name": "todo.delete",
+        "name": "todo_delete",
         "description": "Delete a todo item",
         "inputSchema": {
           "type": "object",
@@ -168,13 +168,13 @@ curl -s -X POST http://localhost:8080/mcp \
 
 ## 4. Call a Tool
 
-**Request (todo.create):**
+**Request (todo_create):**
 ```bash
 curl -s -X POST http://localhost:8080/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -H 'Mcp-Session-Id: YNIH3Q54VARVQAYTJLGSTMNM23' \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo.create","arguments":{"title":"Buy milk"}}}'
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo_create","arguments":{"title":"Buy milk"}}}'
 ```
 
 **Response Body (JSON-RPC):**
@@ -228,7 +228,7 @@ curl -s -X POST http://localhost:8080/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -H 'Mcp-Session-Id: YNIH3Q54VARVQAYTJLGSTMNM23' \
-  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"todo.create","arguments":{"title":"  "}}}'
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"todo_create","arguments":{"title":"  "}}}'
 ```
 
 **Response Body (JSON-RPC with isError):**
@@ -301,6 +301,6 @@ curl -s -X POST http://localhost:8080/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -H "Mcp-Session-Id: $SESSION" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo.create","arguments":{"title":"Test"}}}' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo_create","arguments":{"title":"Test"}}}' \
   | python3 -m json.tool
 ```
