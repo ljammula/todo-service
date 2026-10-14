@@ -206,5 +206,30 @@ func saveSessionID(sessionID string) error {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(sessionID), 0644)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+
+	closeFile := func(saveErr error) error {
+		closeErr := file.Close()
+		if saveErr != nil {
+			return saveErr
+		}
+		return closeErr
+	}
+
+	if err := file.Chmod(0600); err != nil {
+		return closeFile(err)
+	}
+	if err := file.Truncate(0); err != nil {
+		return closeFile(err)
+	}
+	if n, err := file.Write([]byte(sessionID)); err != nil {
+		return closeFile(err)
+	} else if n != len(sessionID) {
+		return closeFile(io.ErrShortWrite)
+	}
+
+	return closeFile(nil)
 }
