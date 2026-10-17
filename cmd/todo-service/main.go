@@ -182,6 +182,14 @@ func decodeJSON(r *http.Request, dst any) error {
 	if err := decoder.Decode(dst); err != nil {
 		return fmt.Errorf("invalid JSON body: %w", err)
 	}
+
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("invalid JSON body: multiple JSON values")
+		}
+		return fmt.Errorf("invalid JSON body: %w", err)
+	}
 	return nil
 }
 
